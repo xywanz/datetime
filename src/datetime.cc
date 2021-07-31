@@ -23,7 +23,6 @@
 #include "datetime.h"
 
 #include <cassert>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -183,17 +182,6 @@ static inline int days_before_year(int year) {
 #define DI4Y 1461     /* days_before_year(5); days in 4 years */
 #define DI100Y 36524  /* days_before_year(101); days in 100 years */
 #define DI400Y 146097 /* days_before_year(401); days in 400 years  */
-
-#define MINYEAR 1
-#define MAXYEAR 9999
-#define MAXORDINAL 3652059 /* date(9999,12,31).toordinal() */
-
-/* Nine decimal digits is easy to communicate, and leaves enough room
- * so that two delta days can be added w/o fear of overflowing a signed
- * 32-bit int, and with plenty of room left over to absorb any possible
- * carries from adding seconds.
- */
-#define MAX_DELTA_DAYS 999999999
 
 /* ordinal -> year, month, day, considering 01-Jan-0001 as day 1. */
 static void ord_to_ymd(int ordinal, int *year, int *month, int *day) {
@@ -367,7 +355,7 @@ static void normalize_pair(int *hi, int *lo, int factor) {
   if (*lo < 0 || *lo >= factor) {
     const int num_hi = divmod(*lo, factor, lo);
     const int new_hi = *hi + num_hi;
-    assert(!signed_add_overflow(new_hi, *hi, num_hi));
+    assert(!signed_add_overflow(*hi, num_hi));
     *hi = new_hi;
   }
   assert(0 <= *lo && *lo < factor);
@@ -645,7 +633,7 @@ std::string format_ctime(int year, int month, int day, int hour, int minute,
   static const char *MonthNames[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
-  int wday = idea::datetime::weekday(year, month, day);
+  int wday = ::datetime::weekday(year, month, day);
 
   return fmt::format("{} {} {:2d} {:02d}:{:02d}:{02d} {:04d}", DayNames[wday],
                      MonthNames[month - 1], day, hour, minute, second, year);
@@ -894,7 +882,7 @@ date date::fromordinal(int ordinal) {
 }
 
 int date::weekday() const {
-  return ::idea::datetime::weekday(year(), month(), day());
+  return ::datetime::weekday(year(), month(), day());
 }
 
 date date::operator+(const timedelta &delta) const {

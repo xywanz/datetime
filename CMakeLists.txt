@@ -17,3 +17,8 @@ target_include_directories(datetime PUBLIC ${PROJECT_SOURCE_DIR}/include)
 target_link_libraries(datetime PRIVATE fmt)
 
 add_library(datetime::datetime ALIAS datetime)
+
+option(BUILD_DATETIME_TESTS "Build the datetime tests" ON)
+if(BUILD_DATETIME_TESTS)
+    add_subdirectory(test)
+endif()

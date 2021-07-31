@@ -27,6 +27,11 @@
 
 namespace datetime {
 
+constexpr int MINYEAR = 1;
+constexpr int MAXYEAR = 9999;
+constexpr int MAXORDINAL = 3652059; /* date(9999,12,31).toordinal() */
+constexpr int MAX_DELTA_DAYS = 999999999;
+
 class timedelta {
  public:
   timedelta() {}
@@ -220,11 +225,11 @@ class datetime {
 
   timedelta operator-(const datetime& rhs) const;
 
-  ::idea::datetime::date date() const {
-    return idea::datetime::date(year(), month(), day(), false);
+  ::datetime::date date() const {
+    return ::datetime::date(year(), month(), day(), false);
   }
-  ::idea::datetime::time time() const {
-    return idea::datetime::time(hour(), minute(), second(), microsecond());
+  ::datetime::time time() const {
+    return ::datetime::time(hour(), minute(), second(), microsecond());
   }
 
   int year() const {
