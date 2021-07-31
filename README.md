@@ -8,7 +8,7 @@ A Python style datetime library of C++
 #include "datetime.h"
 
 int main() {
-    auto now = datetime::datetime::now;
+    auto now = datetime::datetime::now();
     std::cout << now.str() << std::endl;
     now += datetime::timedelta(1);
     std::cout << now.str() << std::endl;
