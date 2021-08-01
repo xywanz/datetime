@@ -40,6 +40,12 @@ class timedelta {
             int minutes = 0, int hours = 0, int weeks = 0);
   timedelta(const timedelta& other);
 
+  static timedelta min() { return timedelta(-MAX_DELTA_DAYS); }
+  static timedelta max() {
+    return timedelta(MAX_DELTA_DAYS, 59, 99999, 0, 59, 23, 0);
+  }
+  static timedelta resolution() { return timedelta(0, 0, 1); }
+
   long total_seconds() const;
 
   operator bool() const {
