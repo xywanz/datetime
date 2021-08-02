@@ -33,6 +33,13 @@
 
 namespace datetime {
 
+/* k = i+j overflows iff k differs in sign from both inputs,
+ * iff k^i has sign bit set and k^j has sign bit set,
+ * iff (k^i)&(k^j) has sign bit set.
+ */
+#define SIGNED_ADD_OVERFLOWED(RESULT, I, J) \
+  ((((RESULT) ^ (I)) & ((RESULT) ^ (J))) < 0)
+
 static constexpr long us_per_us = 1L;
 static constexpr long us_per_ms = 1000L;
 static constexpr long us_per_second = us_per_ms * 1000L;
@@ -41,16 +48,6 @@ static constexpr long us_per_hour = us_per_minute * 60L;
 static constexpr long us_per_day = us_per_hour * 24L;
 static constexpr long us_per_week = us_per_day * 7L;
 static constexpr long seconds_per_day = 3600L * 24L;
-
-/* k = i+j overflows iff k differs in sign from both inputs,
- * iff k^i has sign bit set and k^j has sign bit set,
- * iff (k^i)&(k^j) has sign bit set.
- */
-template <class SignedType>
-static inline bool signed_add_overflow(SignedType i, SignedType j) {
-  SignedType result = i + j;
-  return ((result ^ i) & (result ^ j)) < 0;
-}
 
 /* Compute Python divmod(x, y), returning the quotient and storing the
  * remainder into *r.  The quotient is the floor of x/y, and that's
@@ -355,7 +352,7 @@ static void normalize_pair(int *hi, int *lo, int factor) {
   if (*lo < 0 || *lo >= factor) {
     const int num_hi = divmod(*lo, factor, lo);
     const int new_hi = *hi + num_hi;
-    assert(!signed_add_overflow(*hi, num_hi));
+    assert(!SIGNED_ADD_OVERFLOWED(new_hi, *hi, num_hi));
     *hi = new_hi;
   }
   assert(0 <= *lo && *lo < factor);
@@ -639,11 +636,12 @@ std::string format_ctime(int year, int month, int day, int hour, int minute,
                      MonthNames[month - 1], day, hour, minute, second, year);
 }
 
-timedelta::timedelta(int days, int seconds, int microseconds, bool normalize) {
-  if (normalize) {
-    normalize_d_s_us(&days, &seconds, &microseconds);
-  }
+static inline long accum(long sofar, long num, long factor) {
+  return num * factor + sofar;
+}
 
+timedelta::timedelta(int days, int seconds, int microseconds,
+                     detail::NotNormalizeTag) {
   if (check_delta_day_range(days) < 0) {
     throw 1;
   }
@@ -653,17 +651,22 @@ timedelta::timedelta(int days, int seconds, int microseconds, bool normalize) {
   set_microseconds(microseconds);
 }
 
-static inline long accum(long sofar, long num, long factor) {
-  return num * factor + sofar;
-}
-
 timedelta::timedelta(const timedelta &other)
     : days_(other.days_),
       seconds_(other.seconds_),
       microseconds_(other.microseconds_) {}
 
-timedelta::timedelta(int days, int seconds, int microseconds)
-    : timedelta(days, seconds, microseconds, true) {}
+timedelta::timedelta(int days, int seconds, int microseconds) {
+  normalize_d_s_us(&days, &seconds, &microseconds);
+
+  if (check_delta_day_range(days) < 0) {
+    throw 1;
+  }
+
+  set_days(days);
+  set_seconds(seconds);
+  set_microseconds(microseconds);
+}
 
 timedelta::timedelta(int days, int seconds, int microseconds, int milliseconds,
                      int minutes, int hours, int weeks) {
@@ -708,14 +711,21 @@ timedelta timedelta::microseconds_to_delta(long us) {
     d = divmod(s, seconds_per_day, &s);
   }
   return timedelta(static_cast<int>(d), static_cast<int>(s),
-                   static_cast<int>(us), false);
+                   static_cast<int>(us), detail::NotNormalizeTag{});
+}
+
+timedelta &timedelta::operator=(const timedelta &rhs) {
+  set_days(rhs.days());
+  set_seconds(rhs.seconds());
+  set_microseconds(rhs.microseconds());
+  return *this;
 }
 
 timedelta timedelta::operator+(const timedelta &rhs) const {
   int _days = days() + rhs.days();
   int _seconds = seconds() + rhs.seconds();
   int _microseconds = microseconds() + rhs.microseconds();
-  return timedelta(_days, _seconds, _microseconds, true);
+  return timedelta(_days, _seconds, _microseconds);
 }
 
 timedelta &timedelta::operator+=(const timedelta &rhs) {
@@ -727,7 +737,7 @@ timedelta timedelta::operator-(const timedelta &rhs) const {
   int _days = days() - rhs.days();
   int _seconds = seconds() - rhs.seconds();
   int _microseconds = microseconds() - rhs.microseconds();
-  return timedelta(_days, _seconds, _microseconds, true);
+  return timedelta(_days, _seconds, _microseconds);
 }
 
 timedelta &timedelta::operator-=(const timedelta &rhs) {
@@ -763,7 +773,7 @@ int timedelta::cmp(const timedelta &rhs) const {
 timedelta timedelta::operator+() const { return *this; }
 
 timedelta timedelta::operator-() const {
-  return timedelta(-days(), -seconds(), -microseconds(), true);
+  return timedelta(-days(), -seconds(), -microseconds());
 }
 
 timedelta timedelta::operator*(int n) const {
@@ -850,18 +860,34 @@ std::string timedelta::repr() const {
   return fmt::format("timedelta({})", days());
 }
 
-date::date(int year, int month, int day) : date(year, month, day, true) {}
-
-date::date(int year, int month, int day, bool check) {
-  if (check) {
-    if (check_date_args(year, month, day) < 0) {
-      throw 1;
-    }
+date::date(int year, int month, int day) {
+  if (check_date_args(year, month, day) < 0) {
+    throw 1;
   }
   set_fileds(year, month, day);
 }
 
+date::date(int year, int month, int day, detail::NotCheckArgsTag) {
+  set_fileds(year, month, day);
+}
+
 date date::today() { return fromtimestamp(::time(nullptr)); }
+
+date date::fromisoformat(const std::string &date_string) {
+  int year = 0, month = 0, day = 0;
+
+  int rv;
+  if (date_string.size() == 10) {
+    rv = parse_isoformat_date(date_string.c_str(), &year, &month, &day);
+  } else {
+    rv = -1;
+  }
+
+  if (rv < 0) {
+    throw fmt::format("Invalid isoformat string: {}", date_string);
+  }
+  return date(year, month, day);
+}
 
 date date::fromtimestamp(time_t timestamp) {
   struct tm tm;
@@ -890,7 +916,7 @@ date date::operator+(const timedelta &delta) const {
   int m = month();
   int d = day() + delta.days();
   if (normalize_date(&y, &m, &d) >= 0) {
-    return date(y, m, d, false);
+    return date(y, m, d, detail::NotCheckArgsTag{});
   }
   throw 1;
 }
@@ -905,7 +931,7 @@ date date::operator-(const timedelta &delta) const {
   int m = month();
   int d = day() - delta.days();
   if (normalize_date(&y, &m, &d) >= 0) {
-    return date(y, m, d, false);
+    return date(y, m, d, detail::NotCheckArgsTag{});
   }
   throw 1;
 }
@@ -918,7 +944,7 @@ date &date::operator-=(const timedelta &delta) {
 timedelta date::operator-(const date &rhs) const {
   int lhs_ord = ymd_to_ord(year(), month(), day());
   int rhs_old = ymd_to_ord(rhs.year(), rhs.month(), rhs.day());
-  return timedelta(lhs_ord - rhs_old, 0, 0, false);
+  return timedelta(lhs_ord - rhs_old, 0, 0, detail::NotNormalizeTag{});
 }
 
 int date::cmp(const date &rhs) const {
@@ -929,9 +955,11 @@ std::string date::ctime() const {
   return format_ctime(year(), month(), day(), 0, 0, 0);
 }
 
-std::string date::str() const {
+std::string date::isoformat() const {
   return fmt::format("{:04d}-{:02d}-{:02d}", year(), month(), day());
 }
+
+std::string date::str() const { return isoformat(); }
 
 std::string date::repr() const {
   return fmt::format("date({}, {}, {})", year(), month(), day());
@@ -948,6 +976,14 @@ time::time(int hour, int minute, int second, int usecond) {
   set_microsecond(usecond);
 }
 
+time::time(int hour, int minute, int second, int usecond,
+           detail::NotCheckArgsTag) {
+  set_hour(hour);
+  set_minute(minute);
+  set_second(second);
+  set_microsecond(usecond);
+}
+
 std::string time::isoformat() const {
   int us = microsecond();
   if (us != 0) {
@@ -956,6 +992,14 @@ std::string time::isoformat() const {
   } else {
     return fmt::format("{:02d}:{:02d}:{:02d}", hour(), minute(), second());
   }
+}
+
+time &time::operator=(const time &rhs) {
+  set_hour(rhs.hour());
+  set_minute(rhs.minute());
+  set_second(rhs.second());
+  set_microsecond(rhs.microsecond());
+  return *this;
 }
 
 int time::cmp(const time &rhs) const {
@@ -996,19 +1040,28 @@ datetime::datetime(int year, int month, int day, int hour, int minute,
   set_microsecond(usecond);
 }
 
+datetime::datetime(int year, int month, int day, int hour, int minute,
+                   int second, int usecond, detail::NotCheckArgsTag) {
+  set_year(year);
+  set_month(month);
+  set_day(day);
+  set_hour(hour);
+  set_minute(minute);
+  set_second(second);
+  set_microsecond(usecond);
+}
+
 datetime::datetime(const datetime &other) {
   memcpy(data_, other.data_, sizeof(data_));
 }
 
 datetime datetime::now() {
-  return fromtimestamp(std::chrono::duration_cast<std::chrono::microseconds>(
-                           std::chrono::system_clock::now().time_since_epoch())
-                           .count());
+  struct timespec ts;
+  clock_gettime(CLOCK_REALTIME, &ts);
+  return fromtimestamp(ts.tv_sec, ts.tv_nsec / 1000);
 }
 
-datetime datetime::fromtimestamp(time_t timestamp_us) {
-  time_t us = timestamp_us % 1000000;
-  time_t timestamp = timestamp_us / 1000000;
+datetime datetime::fromtimestamp(time_t timestamp, time_t us) {
   struct tm tm;
 
   localtime_r(&timestamp, &tm);
@@ -1018,6 +1071,16 @@ datetime datetime::fromtimestamp(time_t timestamp_us) {
 
   return datetime(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour,
                   tm.tm_min, tm.tm_sec, us);
+}
+
+datetime &datetime::operator=(const datetime &rhs) {
+  set_year(rhs.year());
+  set_month(rhs.month());
+  set_day(rhs.day());
+  set_hour(rhs.hour());
+  set_second(rhs.second());
+  set_microsecond(rhs.microsecond());
+  return *this;
 }
 
 datetime datetime::operator+(const timedelta &delta) const {
