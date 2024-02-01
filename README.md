@@ -59,11 +59,8 @@ timedelta的构造
 timedelta();
 
 // 指定days, seconds, microseconds
-// 目前如果指定的days, seconds, microseonds过大，标准化后可能会导致溢出且不抛出异常
-// 这个问题会在后面的版本修复
 timedelta(int days, int seconds = 0, int microseconds = 0);
 
-// 支持更多时间单位，会遇到和上面构造方法同样的溢出问题
 timedelta(int days, int seconds, int microseconds, int milliseconds, int minutes = 0, int hours = 0, int weeks = 0);
 
 // timedelta(-MAX_DELTA_DAYS)
@@ -78,7 +75,6 @@ static timedelta resolution();
 
 timedelta的运算
 ```cpp
-// 运算可能会导致溢出但不抛出异常，这个问题后续版本会解决
 timedelta d1;
 timedelta d2;
 int i;
@@ -146,7 +142,9 @@ static date today();
 static date fromisoformat(const std::string& date_string);
 
 // 从时间戳构造，返回当地日期
-static date fromtimestamp(time_t timestamp);
+static datetime fromtimestamp(std::chrono::seconds);
+static datetime fromtimestamp(std::chrono::milliseconds);
+static datetime fromtimestamp(std::chrono::microseconds);
 
 // 根据格里高历序号来构造，即1代表公元1年1月1日，2代表公元1年1月2日，以此类推
 static date fromordinal(int ordinal);
@@ -224,11 +222,15 @@ datetime(int year, int month, int day, int hour = 0, int minute = 0, int second 
 
 static datetime now();
 
-static datetime fromtimestamp(time_t timestamp, time_t us = 0);
+static datetime fromtimestamp(std::chrono::seconds);
+static datetime fromtimestamp(std::chrono::milliseconds);
+static datetime fromtimestamp(std::chrono::microseconds);
 
 static datetime min()；
 
 static datetime max()；
+
+static datetime strptime(const std::string& date_string, const std::string& format);
 ```
 
 datetime之间的运算
@@ -265,4 +267,5 @@ int second() const;
 int microsecond() const;
 ::datetime::date date() const;
 ::datetime::time time() const;
+std::string strftime(const std::string& format) const;
 ```
