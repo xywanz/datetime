@@ -1,4 +1,4 @@
-#include "datetime.h"
+#include "xyu/datetime.h"
 
 #include <chrono>
 #include <cmath>
@@ -9,7 +9,7 @@
 
 #include "fmt/format.h"
 
-namespace xyu::datetime {
+namespace datetime {
 
 /* k = i+j overflows iff k differs in sign from both inputs,
  * iff k^i has sign bit set and k^j has sign bit set,
@@ -606,7 +606,7 @@ static int parse_hh_mm_ss_ff(const char* tstr, const char* tstr_end, int* hour, 
 }
 
 std::string format_ctime(int year, int month, int day, int hour, int minute, int second) {
-  int wday = xyu::datetime::weekday(year, month, day);
+  int wday = datetime::weekday(year, month, day);
 
   return fmt::format("{} {} {:2d} {:02d}:{:02d}:{:02d} {:04d}", kDayNames[wday],
                      kMonthNames[month - 1], day, hour, minute, second, year);
@@ -958,7 +958,7 @@ date date::fromisocalendar(const IsoCalendarDate& iso_calendar) {
     if (week == 53) {
       // ISO years have 53 weeks in it on years starting with a Thursday
       // and on leap years starting on Wednesday
-      int first_weekday = ::xyu::datetime::weekday(y, 1, 1);
+      int first_weekday = ::datetime::weekday(y, 1, 1);
       if (first_weekday == 3 || (first_weekday == 2 && is_leap(y))) {
         out_of_range = 0;
       }
@@ -986,7 +986,7 @@ date date::fromisocalendar(const IsoCalendarDate& iso_calendar) {
   return date(y, mon, d);
 }
 
-int date::weekday() const { return ::xyu::datetime::weekday(year(), month(), day()); }
+int date::weekday() const { return ::datetime::weekday(year(), month(), day()); }
 
 int date::toordinal() const { return ymd_to_ord(year(), month(), day()); }
 
@@ -1226,7 +1226,7 @@ std::string time::repr() const {
   }
 }
 
-::xyu::datetime::datetime datetime::kDatetimeEpoch{1970, 1, 1, 0, 0, 0, 0};
+::datetime::datetime datetime::kDatetimeEpoch{1970, 1, 1, 0, 0, 0, 0};
 
 datetime::datetime(int year, int month, int day, int hour, int minute, int second, int usecond) {
   check_date_args(year, month, day);
@@ -1286,11 +1286,11 @@ datetime datetime::fromordinal(int ordinal) {
 }
 
 datetime datetime::fromisocalendar(const IsoCalendarDate& iso_calendar) {
-  auto d = ::xyu::datetime::date::fromisocalendar(iso_calendar);
+  auto d = ::datetime::date::fromisocalendar(iso_calendar);
   return datetime(d.year(), d.month(), d.day());
 }
 
-datetime datetime::combine(const ::xyu::datetime::date& d, const ::xyu::datetime::time& t) {
+datetime datetime::combine(const ::datetime::date& d, const ::datetime::time& t) {
   return datetime(d.year(), d.month(), d.day(), t.hour(), t.minute(), t.second(), t.microsecond());
 }
 
@@ -1343,7 +1343,7 @@ timedelta datetime::operator-(const datetime& rhs) const {
   return timedelta(delta_d, delta_s, delta_us);
 }
 
-int datetime::weekday() const { return ::xyu::datetime::weekday(year(), month(), day()); }
+int datetime::weekday() const { return ::datetime::weekday(year(), month(), day()); }
 
 int datetime::toordinal() const { return ymd_to_ord(year(), month(), day()); }
 
@@ -1455,7 +1455,7 @@ std::string datetime::strftime(const std::string& fmt) const {
         break;
       }
       case 'U': {
-        int first_weekday = ::xyu::datetime::weekday(year(), 1, 1);
+        int first_weekday = ::datetime::weekday(year(), 1, 1);
         int first_sunday = 1;
         if (first_weekday < 6) {
           first_sunday += (6 - first_weekday);
@@ -1469,7 +1469,7 @@ std::string datetime::strftime(const std::string& fmt) const {
         break;
       }
       case 'W': {
-        int first_weekday = ::xyu::datetime::weekday(year(), 1, 1);
+        int first_weekday = ::datetime::weekday(year(), 1, 1);
         int first_monday = 1;
         if (first_weekday > 0) {
           first_monday += (6 - first_weekday + 1);
@@ -1538,4 +1538,4 @@ std::string datetime::repr() const {
   }
 }
 
-}  // namespace xyu::datetime
+}  // namespace datetime
