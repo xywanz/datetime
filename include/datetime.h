@@ -1,67 +1,57 @@
-// MIT License
-//
-// Copyright (c) 2021 kevin lau
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+#pragma once
 
-#ifndef DATETIME_H_
-#define DATETIME_H_
-
+#include <cassert>
+#include <chrono>
+#include <compare>
+#include <cstdint>
+#include <functional>
+#include <stdexcept>
 #include <string>
 
-namespace datetime {
+namespace xyu::datetime {
 
-constexpr int MINYEAR = 1;
-constexpr int MAXYEAR = 9999;
-constexpr int MAXORDINAL = 3652059; /* date(9999,12,31).toordinal() */
-
-/* Nine decimal digits is easy to communicate, and leaves enough room
- * so that two delta days can be added w/o fear of overflowing a signed
- * 32-bit int, and with plenty of room left over to absorb any possible
- * carries from adding seconds.
- */
-constexpr int MAX_DELTA_DAYS = 999999999;
+constexpr int kMinYear = 1;
+constexpr int kMaxYear = 9999;
+constexpr int kMaxOrdinal = 3652059; /* date(9999,12,31).toordinal() */
+constexpr int kMaxDeltaDays = 999999999;
 
 namespace detail {
-struct NotCheckArgsTag {};
-struct NotNormalizeTag {};
+struct NonCheckTag {};
+struct NonNormTag {};
+struct NonNormNonCheckTag {};
 }  // namespace detail
+
+struct IsoCalendarDate {
+  int year;
+  int week;
+  int weekday;
+};
 
 class timedelta {
  public:
   timedelta() {}
-  timedelta(int days, int seconds = 0, int microseconds = 0);
-  timedelta(int days, int seconds, int microseconds, int milliseconds,
-            int minutes = 0, int hours = 0, int weeks = 0);
+  explicit timedelta(int days, int seconds = 0, int microseconds = 0);
+  timedelta(int days, int seconds, int microseconds, int milliseconds, int minutes = 0,
+            int hours = 0, int weeks = 0);
   timedelta(const timedelta& other);
 
-  static timedelta min() { return timedelta(-MAX_DELTA_DAYS); }
-  static timedelta max() {
-    return timedelta(MAX_DELTA_DAYS, 59, 99999, 0, 59, 23, 0);
-  }
+  timedelta(std::chrono::weeks weeks);
+  timedelta(std::chrono::days days);
+  timedelta(std::chrono::hours hours);
+  timedelta(std::chrono::minutes minutes);
+  timedelta(std::chrono::seconds seconds);
+  timedelta(std::chrono::milliseconds milliseconds);
+  timedelta(std::chrono::microseconds microseconds);
+
+  static timedelta min() { return timedelta(-kMaxDeltaDays); }
+  static timedelta max() { return timedelta(kMaxDeltaDays, 59, 99999, 0, 59, 23, 0); }
   static timedelta resolution() { return timedelta(0, 0, 1); }
 
   long total_seconds() const;
+  long total_milliseconds() const;
+  long total_microseconds() const { return delta_to_microseconds(); }
 
-  operator bool() const {
-    return days_ != 0 || seconds_ != 0 || microseconds_ != 0;
-  }
+  operator bool() const { return days_ != 0 || seconds_ != 0 || microseconds_ != 0; }
 
   timedelta& operator=(const timedelta& rhs);
   timedelta operator+(const timedelta& rhs) const;
@@ -73,12 +63,7 @@ class timedelta {
   timedelta operator%(const timedelta& rhs) const;
   timedelta& operator%=(const timedelta& rhs);
 
-  bool operator==(const timedelta& rhs) const { return cmp(rhs) == 0; }
-  bool operator!=(const timedelta& rhs) const { return !(*this == rhs); }
-  bool operator>(const timedelta& rhs) const { return cmp(rhs) > 0; }
-  bool operator>=(const timedelta& rhs) const { return cmp(rhs) >= 0; }
-  bool operator<(const timedelta& rhs) const { return cmp(rhs) < 0; }
-  bool operator<=(const timedelta& rhs) const { return cmp(rhs) <= 0; }
+  std::strong_ordering operator<=>(const timedelta& rhs) const = default;
 
   timedelta operator+() const;
   timedelta operator-() const;
@@ -98,19 +83,16 @@ class timedelta {
   std::string repr() const;
 
  private:
-  timedelta(int days, int seconds, int microseconds, detail::NotNormalizeTag);
-
-  void set_days(int days) { days_ = days; }
-  void set_seconds(int seconds) { seconds_ = seconds; }
-  void set_microseconds(int microseconds) { microseconds_ = microseconds; }
+  timedelta(int days, int seconds, int microseconds, detail::NonNormTag);
+  timedelta(int days, int seconds, int microseconds, detail::NonNormNonCheckTag);
 
   static timedelta microseconds_to_delta(long us);
   long delta_to_microseconds() const;
 
-  int cmp(const timedelta& rhs) const;
+  void frommicroseconds(long us);
 
- private:
   friend class date;
+  friend class std::hash<timedelta>;
 
   int days_ = 0;
   int seconds_ = 0;
@@ -123,33 +105,33 @@ class date {
 
   static date today();
   static date fromisoformat(const std::string& date_string);
-  static date fromtimestamp(time_t timestamp);
+  static date fromtimestamp(std::chrono::microseconds timestamp);
+  static date fromtimestamp(std::chrono::seconds timestamp);
   static date fromordinal(int ordinal);
+  static date fromisocalendar(const IsoCalendarDate& iso_calendar);
 
-  static date min() { return date(MINYEAR, 1, 1, detail::NotCheckArgsTag{}); }
-  static date max() { return date(MAXYEAR, 12, 31, detail::NotCheckArgsTag{}); }
+  static date min() { return date(kMinYear, 1, 1, detail::NonCheckTag{}); }
+  static date max() { return date(kMaxYear, 12, 31, detail::NonCheckTag{}); }
 
   static timedelta resolution() { return timedelta(1); }
 
-  int year() const {
-    return (static_cast<int>(data_[0]) << 8) | static_cast<int>(data_[1]);
-  }
+  int year() const { return (static_cast<int>(data_[0]) << 8) | static_cast<int>(data_[1]); }
   int month() const { return static_cast<int>(data_[2]); }
   int day() const { return static_cast<int>(data_[3]); }
   int weekday() const;
+  int isoweekday() const { return weekday() + 1; }
+  int toordinal() const;
+  IsoCalendarDate isocalendar() const;
 
-  bool operator==(const date& rhs) const { return cmp(rhs) == 0; }
-  bool operator!=(const date& rhs) const { return cmp(rhs) != 0; }
-  bool operator>(const date& rhs) const { return cmp(rhs) > 0; }
-  bool operator>=(const date& rhs) const { return cmp(rhs) >= 0; }
-  bool operator<(const date& rhs) const { return cmp(rhs) < 0; }
-  bool operator<=(const date& rhs) const { return cmp(rhs) <= 0; }
+  std::strong_ordering operator<=>(const date& rhs) const = default;
 
   date operator+(const timedelta& delta) const;
   date& operator+=(const timedelta& delta);
   date operator-(const timedelta& delta) const;
   date& operator-=(const timedelta& delta);
   timedelta operator-(const date& rhs) const;
+
+  std::string strftime(const std::string& format) const;
 
   std::string ctime() const;
   std::string isoformat() const;
@@ -158,7 +140,7 @@ class date {
   std::string repr() const;
 
  private:
-  date(int year, int month, int day, detail::NotCheckArgsTag);
+  date(int year, int month, int day, detail::NonCheckTag);
 
   void set_year(int year) {
     data_[0] = static_cast<unsigned char>((year & 0xff00) >> 8);
@@ -173,22 +155,37 @@ class date {
     set_day(day);
   }
 
-  int cmp(const date& rhs) const;
-
- private:
   friend class datetime;
+  friend class std::hash<date>;
 
-  unsigned char data_[4];
+  static constexpr int kDataSize = 4;
+  unsigned char data_[kDataSize];
 };
 
 class time {
  public:
-  time(int hour, int minute, int second, int usecond);
+  /**
+   * @brief 构造表示00:00:00的time
+   */
+  time();
 
-  static time min() { return time(0, 0, 0, 0, detail::NotCheckArgsTag{}); }
-  static time max() {
-    return time(23, 59, 59, 999999, detail::NotCheckArgsTag{});
-  }
+  explicit time(int hour, int minute = 0, int second = 0, int usecond = 0);
+
+  /**
+   * @brief 从iso格式构造time
+   * 不支持时区，如果有则会忽略。
+   * 支持的格式：
+   *   HH:MM:SS
+   *   HH:MM
+   *   HH
+   * @param time_string
+   * @return time
+   * @throw std::invalid_exception 无法解析的格式
+   */
+  static time fromisoformat(const std::string& time_string);
+
+  static time min() { return time(0, 0, 0, 0, detail::NonCheckTag{}); }
+  static time max() { return time(23, 59, 59, 999999, detail::NonCheckTag{}); }
 
   static timedelta resolution() { return timedelta(0, 0, 1); }
 
@@ -196,8 +193,8 @@ class time {
   int minute() const { return static_cast<int>(data_[1]); }
   int second() const { return static_cast<int>(data_[2]); }
   int microsecond() const {
-    return (static_cast<int>(data_[3]) << 16) |
-           (static_cast<int>(data_[4]) << 8) | static_cast<int>(data_[5]);
+    return (static_cast<int>(data_[3]) << 16) | (static_cast<int>(data_[4]) << 8) |
+           static_cast<int>(data_[5]);
   }
 
   operator bool() const {
@@ -205,22 +202,22 @@ class time {
            *reinterpret_cast<const uint16_t*>(data_ + 4) != 0;
   }
 
-  time& operator=(const time& rhs);
+  std::strong_ordering operator<=>(const time& rhs) const = default;
 
-  bool operator==(const time& rhs) const { return cmp(rhs) == 0; }
-  bool operator!=(const time& rhs) const { return cmp(rhs) != 0; }
-  bool operator>(const time& rhs) const { return cmp(rhs) > 0; }
-  bool operator>=(const time& rhs) const { return cmp(rhs) >= 0; }
-  bool operator<(const time& rhs) const { return cmp(rhs) < 0; }
-  bool operator<=(const time& rhs) const { return cmp(rhs) <= 0; }
+  std::string strftime(const std::string& format) const;
 
+  /**
+   * @brief 转换成HH:MM:SS格式的字符串
+   *
+   * @return std::string
+   */
   std::string isoformat() const;
 
   std::string str() const;
   std::string repr() const;
 
  private:
-  time(int hour, int minute, int second, int usecond, detail::NotCheckArgsTag);
+  time(int hour, int minute, int second, int usecond, detail::NonCheckTag);
 
   void set_hour(int hour) { data_[0] = static_cast<unsigned char>(hour); }
   void set_minute(int minute) { data_[1] = static_cast<unsigned char>(minute); }
@@ -231,41 +228,64 @@ class time {
     data_[5] = static_cast<unsigned char>((microsecond & 0x0000ff));
   }
 
-  int cmp(const time& rhs) const;
-
- private:
   friend class datetime;
+  friend class std::hash<time>;
 
-  unsigned char data_[6];
+  static constexpr int kDataSize = 6;
+  unsigned char data_[kDataSize];
 };
 
 class datetime {
  public:
-  datetime(int year, int month, int day, int hour = 0, int minute = 0,
-           int second = 0, int usecond = 0);
+  datetime(int year, int month, int day, int hour = 0, int minute = 0, int second = 0,
+           int usecond = 0);
   datetime(const datetime& other);
 
   static datetime now();
-  static datetime fromtimestamp(time_t timestamp, time_t us = 0);
 
-  static datetime min() {
-    return datetime(MINYEAR, 1, 1, 0, 0, 0, 0, detail::NotCheckArgsTag{});
-  }
+  /**
+   * @brief 字符串转datetime
+   * 支持部分python strptime格式化符号。
+   * 将格式化的字符串转化为datetime，支持微秒级别的精度。
+   * 格式化符号:
+   *     %Y 四位数表示的年份 (0001-9999)
+   *     %m 两位数表示的月份 (01-12)
+   *     %d 两位数表示的月份中的一天 (01-31)
+   *     %H 两位数表示的小时数 (00-23)
+   *     %M 两位数表示的分钟数 (00-59)
+   *     %S 两位数表示的秒钟数 (00-59)
+   *     %f 六位数表示的微秒数 (000000-999999)
+   *     %% 百分号
+   * 示例：
+   *    auto dt = datetime::strptime("2021/08/31 15:59:55.123456", "%Y/%m/%d %H:%M:%S.%f");
+   *    assert(dt == datetime(2021, 8, 31, 15, 59, 55, 123456));
+   * @param date_string
+   * @param format
+   * @return datetime
+   * @exception std::invalid_argument 解析失败
+   */
+  static datetime strptime(const std::string& date_string, const std::string& format);
+
+  /**
+   * @brief 从微秒时间戳创建datetime
+   *
+   * @param timestamp 微秒时间戳，即unix时间戳*1,000,000 + 微秒数
+   * @return datetime
+   */
+  static datetime fromtimestamp(std::chrono::microseconds timestamp);
+  static datetime fromordinal(int ordinal);
+  static datetime fromisocalendar(const IsoCalendarDate& iso_calendar);
+  static datetime combine(const ::xyu::datetime::date& d, const ::xyu::datetime::time& t);
+
+  static datetime min() { return datetime(kMinYear, 1, 1, 0, 0, 0, 0, detail::NonCheckTag{}); }
   static datetime max() {
-    return datetime(MAXYEAR, 12, 31, 23, 59, 59, 999999,
-                    detail::NotCheckArgsTag{});
+    return datetime(kMaxYear, 12, 31, 23, 59, 59, 999999, detail::NonCheckTag{});
   }
 
   static timedelta resolution() { return timedelta(0, 0, 1); }
 
-  bool operator==(const datetime& rhs) const { return cmp(rhs) == 0; }
-  bool operator!=(const datetime& rhs) const { return cmp(rhs) != 0; }
-  bool operator>(const datetime& rhs) const { return cmp(rhs) > 0; }
-  bool operator>=(const datetime& rhs) const { return cmp(rhs) >= 0; }
-  bool operator<(const datetime& rhs) const { return cmp(rhs) < 0; }
-  bool operator<=(const datetime& rhs) const { return cmp(rhs) <= 0; }
+  std::strong_ordering operator<=>(const datetime& rhs) const = default;
 
-  datetime& operator=(const datetime& rhs);
   datetime operator+(const timedelta& delta) const;
   datetime& operator+=(const timedelta& delta);
   datetime operator-(const timedelta& delta) const;
@@ -273,25 +293,61 @@ class datetime {
 
   timedelta operator-(const datetime& rhs) const;
 
-  ::datetime::date date() const {
-    return ::datetime::date(year(), month(), day(), detail::NotCheckArgsTag{});
+  ::xyu::datetime::date date() const {
+    return ::xyu::datetime::date(year(), month(), day(), detail::NonCheckTag{});
   }
-  ::datetime::time time() const {
-    return ::datetime::time(hour(), minute(), second(), microsecond());
+  ::xyu::datetime::time time() const {
+    return ::xyu::datetime::time(hour(), minute(), second(), microsecond(), detail::NonCheckTag{});
   }
 
-  int year() const {
-    return (static_cast<int>(data_[0]) << 8) | static_cast<int>(data_[1]);
-  }
+  int year() const { return (static_cast<int>(data_[0]) << 8) | static_cast<int>(data_[1]); }
   int month() const { return static_cast<int>(data_[2]); }
   int day() const { return static_cast<int>(data_[3]); }
   int hour() const { return static_cast<int>(data_[4]); }
   int minute() const { return static_cast<int>(data_[5]); }
   int second() const { return static_cast<int>(data_[6]); }
   int microsecond() const {
-    return (static_cast<int>(data_[7]) << 16) |
-           (static_cast<int>(data_[8]) << 8) | static_cast<int>(data_[9]);
+    return (static_cast<int>(data_[7]) << 16) | (static_cast<int>(data_[8]) << 8) |
+           static_cast<int>(data_[9]);
   }
+  int weekday() const;
+  int isoweekday() const { return weekday() + 1; }
+  int toordinal() const;
+  IsoCalendarDate isocalendar() const;
+
+  std::chrono::microseconds timestamp() const;
+
+  /**
+   * @brief datetime转字符串
+   * 和python的strftime格式化符号基本一致
+   * 格式化符号：
+   *     %a  Abbreviated weekday name. Sun, Mon, ...
+   *     %A  Full weekday name. Sunday, Monday, ...
+   *     %w  Weekday as a decimal number. 0, 1, ..., 6
+   *     %d  Day of the month as a zero added decimal. 01, 02, ..., 31
+   *     %b  Day of the month as a decimal number. Jan, Feb, ..., Dec
+   *     %B  Full month name. January, February, ...
+   *     %m  Month as a zero added decimal number. 01, 02, ..., 12
+   *     %y  Year without century as a zero added decimal number. 00, 01, ..., 99
+   *     %Y  Year with century as a decimal number. 2021, 2022 etc.
+   *     %H  Hour (24-hour clock) as a zero added decimal number. 00, 01, ..., 23
+   *     %I  Hour (12-hour clock) as a zero added decimal number. 01, 02, ..., 12
+   *     %p  Locale’s AM or PM. AM, PM
+   *     %M  Minute as a zero added decimal number. 00, 01, ..., 59
+   *     %S  Second as a zero added decimal number. 00, 01, ..., 59
+   *     %f  Microsecond as a decimal number, zero added on the left. 000000 - 999999
+   *     %z  (Unsupported) UTC offset in the form +HHMM or -HHMM.
+   *     %Z  (Unsupported) Time zone name.
+   *     %j  Day of the year as a zero added decimal number. 001, 002, ..., 366
+   *     %U  Week number of the year (Sunday as the first day of the week). All days in a new year
+   *         preceding the first Sunday are considered to be in week 0. 00, 01, ..., 53
+   *     %W  Week number of the year (Monday as the first day of the week). All days in a new year
+   *         preceding the first Monday are considered to be in week 0. 00, 01, ..., 53
+   * @param format
+   * @return std::string
+   * @exception std::invalid_argument conv failed
+   */
+  std::string strftime(const std::string& format) const;
 
   std::string ctime() const;
 
@@ -299,8 +355,8 @@ class datetime {
   std::string repr() const;
 
  private:
-  datetime(int year, int month, int day, int hour, int minute, int second,
-           int usecond, detail::NotCheckArgsTag);
+  datetime(int year, int month, int day, int hour, int minute, int second, int usecond,
+           detail::NonCheckTag);
 
   void set_year(int year) {
     data_[0] = static_cast<unsigned char>((year & 0xff00) >> 8);
@@ -317,14 +373,56 @@ class datetime {
     data_[9] = static_cast<unsigned char>((microsecond & 0x0000ff));
   }
 
-  int cmp(const datetime& rhs) const;
+  friend class std::hash<datetime>;
 
- private:
-  unsigned char data_[10];
+  static datetime kDatetimeEpoch;
+
+  static constexpr int kDataSize = 10;
+  unsigned char data_[kDataSize];
 };
 
 inline timedelta operator*(int lhs, const timedelta& rhs) { return rhs * lhs; }
 
-}  // namespace datetime
+}  // namespace xyu::datetime
 
-#endif  // DATETIME_H_
+namespace std {
+template <>
+struct hash<xyu::datetime::timedelta> {
+  using argument_type = xyu::datetime::timedelta;
+  using result_type = std::size_t;
+  result_type operator()(const argument_type& delta) const {
+    auto data = delta.delta_to_microseconds();
+    return std::hash<decltype(data)>{}(data);
+  }
+};
+
+template <>
+struct hash<xyu::datetime::date> {
+  using argument_type = xyu::datetime::date;
+  using result_type = std::size_t;
+  result_type operator()(const argument_type& d) const {
+    std::string_view bytes((const char*)d.data_, d.kDataSize);
+    return std::hash<std::string_view>{}(bytes);
+  }
+};
+
+template <>
+struct hash<xyu::datetime::time> {
+  using argument_type = xyu::datetime::time;
+  using result_type = std::size_t;
+  result_type operator()(const argument_type& t) const {
+    std::string_view bytes((const char*)t.data_, t.kDataSize);
+    return std::hash<std::string_view>{}(bytes);
+  }
+};
+
+template <>
+struct hash<xyu::datetime::datetime> {
+  using argument_type = xyu::datetime::datetime;
+  using result_type = std::size_t;
+  result_type operator()(const argument_type& dt) const noexcept {
+    std::string_view bytes((const char*)dt.data_, dt.kDataSize);
+    return std::hash<std::string_view>{}(bytes);
+  }
+};
+}  // namespace std
