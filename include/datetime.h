@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace xyu::datetime {
+namespace datetime {
 
 constexpr int kMinYear = 1;
 constexpr int kMaxYear = 9999;
@@ -275,7 +275,7 @@ class datetime {
   static datetime fromtimestamp(std::chrono::microseconds timestamp);
   static datetime fromordinal(int ordinal);
   static datetime fromisocalendar(const IsoCalendarDate& iso_calendar);
-  static datetime combine(const ::xyu::datetime::date& d, const ::xyu::datetime::time& t);
+  static datetime combine(const ::datetime::date& d, const ::datetime::time& t);
 
   static datetime min() { return datetime(kMinYear, 1, 1, 0, 0, 0, 0, detail::NonCheckTag{}); }
   static datetime max() {
@@ -293,11 +293,11 @@ class datetime {
 
   timedelta operator-(const datetime& rhs) const;
 
-  ::xyu::datetime::date date() const {
-    return ::xyu::datetime::date(year(), month(), day(), detail::NonCheckTag{});
+  ::datetime::date date() const {
+    return ::datetime::date(year(), month(), day(), detail::NonCheckTag{});
   }
-  ::xyu::datetime::time time() const {
-    return ::xyu::datetime::time(hour(), minute(), second(), microsecond(), detail::NonCheckTag{});
+  ::datetime::time time() const {
+    return ::datetime::time(hour(), minute(), second(), microsecond(), detail::NonCheckTag{});
   }
 
   int year() const { return (static_cast<int>(data_[0]) << 8) | static_cast<int>(data_[1]); }
@@ -383,12 +383,12 @@ class datetime {
 
 inline timedelta operator*(int lhs, const timedelta& rhs) { return rhs * lhs; }
 
-}  // namespace xyu::datetime
+}  // namespace datetime
 
 namespace std {
 template <>
-struct hash<xyu::datetime::timedelta> {
-  using argument_type = xyu::datetime::timedelta;
+struct hash<datetime::timedelta> {
+  using argument_type = datetime::timedelta;
   using result_type = std::size_t;
   result_type operator()(const argument_type& delta) const {
     auto data = delta.delta_to_microseconds();
@@ -397,8 +397,8 @@ struct hash<xyu::datetime::timedelta> {
 };
 
 template <>
-struct hash<xyu::datetime::date> {
-  using argument_type = xyu::datetime::date;
+struct hash<datetime::date> {
+  using argument_type = datetime::date;
   using result_type = std::size_t;
   result_type operator()(const argument_type& d) const {
     std::string_view bytes((const char*)d.data_, d.kDataSize);
@@ -407,8 +407,8 @@ struct hash<xyu::datetime::date> {
 };
 
 template <>
-struct hash<xyu::datetime::time> {
-  using argument_type = xyu::datetime::time;
+struct hash<datetime::time> {
+  using argument_type = datetime::time;
   using result_type = std::size_t;
   result_type operator()(const argument_type& t) const {
     std::string_view bytes((const char*)t.data_, t.kDataSize);
@@ -417,8 +417,8 @@ struct hash<xyu::datetime::time> {
 };
 
 template <>
-struct hash<xyu::datetime::datetime> {
-  using argument_type = xyu::datetime::datetime;
+struct hash<datetime::datetime> {
+  using argument_type = datetime::datetime;
   using result_type = std::size_t;
   result_type operator()(const argument_type& dt) const noexcept {
     std::string_view bytes((const char*)dt.data_, dt.kDataSize);
